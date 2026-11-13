@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.0.0] - 2026-11-13 — Dual-Agent 全新升级自由模式（主控宿主自绑定 + 3 步实时选型 + 独立子会话自由编排）
+
+> 项目由原 1.x 单向固定绑定（`codex-agy`）正式升级为 **`dual-agent` 2.0 全新升级自由模式**，统一兼容 **Codex**、**Antigravity IDE** 与 **AGY CLI**。
+
+1. **「在哪用谁就是主控」宿主自绑定机制（免选主控通道）**：
+   - 在 `Codex`、`Antigravity IDE` 或终端 `agy` / `agy-gcp` 中发起对话时，自动锁定当前宿主窗口为唯一主控（`Codex` 与 `Antigravity IDE` 仅做主控、不做子 Agent），直接从**选择主控模型**起步。
+2. **同一会话首次触发 3 步串行实时选型弹窗（后续轮次自动复用）**：
+   - **Step 1（实时查并选主控模型）**：Codex 实时读取 `~/.codex/config.toml` 与 `~/.codex/models_cache.json`，Antigravity IDE / CLI 直接调用内置 `swarm(action="models", all=true)` 毫秒级获取当前登录态真实模型列表；给出 `(Recommended)` 建议，选择保持当前模型或顺手在顶栏切换主控模型。
+   - **Step 2（选子 Agent 通道）**：在无头 CLI `agy`（个人 Google Pro）与 `agy-gcp`（GCP Vertex AI ADC）间自由二选一。
+   - **Step 3（实时查并选子 Agent 模型 $\rightarrow$ 立即执行）**：实时跑子通道 `models` 命令，结合主控模型推荐最佳搭档（如旗舰主控配 `gemini-4-hydrogen-high` 1M 主力子会话），手动点选后立即启动全新独立子会话执行，同会话后续任务自动沿用。
+3. **跨宿主零轮询调度与同体系异构模型独立双会话**：
+   - 补齐 Antigravity IDE / CLI 作主控时的 `run_command` 后台任务反应式自动唤醒模板（与 Codex V8 `while` + `functions.wait` 并列），支持在 IDE 或 `agy` 内实现“旗舰模型主会话定边界审 `git diff` + 主力模型独立子会话跑几百步编码自测”的上下文物理隔离。
+   - 同步收录 `Gemini 4 Hydrogen`（1M 上下文 / 1M 输出 Flash 级主力 workhorse）定位与双通道 CLI 白名单实测结论，双端安装至 `~/.codex/skills/dual-agent/` 与 `~/.gemini/config/skills/dual-agent/`。
+
+---
+
+## [2.6.0] - 2026-11-13 — 个人通道升级新一代主力 `gemini-4-hydrogen-high` 与双通道主力差异隔离
+
+1. **实测核验 `Gemini 4 Hydrogen` 官方定位与双通道 CLI 适配差异根因**：
+   - **官方定位**：Vertex AI 官方明确定义 `gemini-4-hydrogen` 为 *"high-efficiency Gemini 4 workhorse ... at Flash speed and scale"*（1M 上下文窗口 + Long Decode 最高 1M 输出 token），确认是 `gemini-3.8-flash` 的跨代升级版，并提供 `low` / `medium` / `high` / `xhigh` 四档思考力度。
+   - **为什么 Vertex AI 已有模型但 `agy-gcp` 暂不可调（逆向取证结论）**：
+     - **个人通道 `agy`（Consumer OAuth）** 通过 `daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` 服务端动态下发模型表，无需升级 CLI 即可直接使用 `gemini-4-hydrogen-{high,xhigh,medium,low}`（实测 `-p` 返回 `SUCCESS`）。
+     - **GCP 通道 `agy-gcp`（`AGY_ADC_AUTH`）** 依赖 `agy` 二进制内置的静态 ADC 模型白名单（当前最新版 `agy 1.5.7` 仅内置到 `gemini-4-carbon-*`，且 `settings.json` 的 `customModels` 仅支持 `gemini-api://` / `blade:` / `evergreen:` / `beyond-api://` 网关 URL，不支持原生 ADC 路由），强传 `--model gemini-4-hydrogen-high` 会在本地 `model_config_manager.go:97` 直接拦截报 `not recognized`。需等 `agy` 下一版本更新客户端白名单（`agy-gcp models` 出现 `gemini-4-hydrogen-*`）后方可启用。
+2. **分通道默认主力升级与逐级自动降级链**：
+   - **个人通道 `agy`（默认）**：日常默认主力由 `gemini-3.8-flash-high` 升级为 **`gemini-4-hydrogen-high`**（用户点名深度推理可用 `gemini-4-hydrogen-xhigh`）；当遇 Hydrogen 配额不足/耗尽或端点异常时，自动无缝回退至同通道 `gemini-3.8-flash-high`。
+   - **GCP 通道 `agy-gcp`**：日常默认主力继续保持 **`gemini-3.8-flash-high`**，严禁在未通过 `agy-gcp models` 确认上线前盲目传入 `gemini-4-hydrogen-*`。
+   - **V8 调用模板防呆绑定**：`SKILL.md` 调用模板改为 `const model = channel === "agy-gcp" ? "gemini-3.8-flash-high" : "gemini-4-hydrogen-high"`，从代码层杜绝切换 `agy-gcp` 时误带 `hydrogen` 模型 ID。
+
+---
+
 ## [2.5.0] - 2026-11-12 — 双通道（`agy` 个人 / `agy-gcp` GCP ADC）支持、分通道旗舰对齐与 Carbon 超时根因修复
 
 1. **固化 `agy`（个人 Google Pro，默认）与 `agy-gcp`（GCP Vertex AI ADC，按需）双通道切换与环境隔离**：
