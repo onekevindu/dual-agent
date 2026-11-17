@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.0] - 2026-11-17 — 确立「两张网叠加」异构双订阅主推架构、`agy-gcp` 降级备选隔离与可行性核验闭环
+
+1. **明确「幻觉错位 / 两张有破洞的网叠加」理论与双订阅主推定位**：
+   - 确立日常默认主推 **`Codex + agy` 双订阅协作模式**：不同 Harness（Codex vs Antigravity CLI）与不同厂商模型（`gpt-6.1-*` vs `Gemini 4` / `Claude 5.5`）的思维盲区与疏漏点互不重合（幻觉错位），叠加协作可互相补漏并降低单模型幻觉穿透风险。
+   - **`agy-gcp` 降级为备选方案并严格按宿主隔离推送**：仅作为 Codex 不可用时启用 Gemini 4 旗舰（`Carbon` / `Argon`）顶替的备选退路。在 **Codex / Codex CLI（及个人 `agy` / IDE 环境）中绝不主动推送 `agy-gcp`**；**仅当在 `agy-gcp` 环境（`AGY_ADC_AUTH=true`）中使用 Skill 或用户显式点名时才推送 `agy-gcp`**。
+2. **Codex 选型向导精简为 2 步直达（取消默认通道二选一弹窗）**：
+   - **Step 1**：实时读取 `~/.codex/config.toml` 与 `~/.codex/models_cache.json` 选定主控模型；
+   - **Step 2**：自动锁定 `agy` 子通道（不推送 `agy-gcp`）并实时运行 `agy models` 选定子模型后立即开工（`agy-gcp` 宿主下同理锁定 `agy-gcp`）。
+   - 同步核验 `agy 1.5.9` 实测结果：`agy-gcp models` 已全面支持 `gemini-4-hydrogen-{high,xhigh,medium,low}`、`gemini-4-carbon-*`、`gemini-4-argon-*` 与 `claude-*-5-5-*`，更新 `README.md` 过时标注。
+3. **升级主从 Harness 职责分工：子 Harness 内嵌「可行性验证提意见 + 任务执行」**：
+   - 在执行 Prompt 中嵌入单轮内嵌核验契约：子 Harness 动手前先对照真实代码核验主控方案，发现核心假设错误或契约冲突时先停手提意见交主控拍板；可行则直接执行修改与本地编译自检，并在摘要中单列「可行性核验与补充意见」。重大跨服务改造保留独立只读前置评估（`EVAL_SETTINGS`）。
+   - 同步对齐全局「默认禁写 `src/test/**` 与禁加测试 `pom.xml` 依赖」规范至仓库版 `dual-agent/SKILL.md`、`AGENTS.md` 与 `README.md`，并重绘 `assets/architecture.png`。
+
+---
+
 ## [2.0.0] - 2026-11-13 — Dual-Agent 全新升级自由模式（主控宿主自绑定 + 3 步实时选型 + 独立子会话自由编排）
 
 > 项目由原 1.x 单向固定绑定（`codex-agy`）正式升级为 **`dual-agent` 2.0 全新升级自由模式**，统一兼容 **Codex**、**Antigravity IDE** 与 **AGY CLI**。

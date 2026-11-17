@@ -1,15 +1,18 @@
-# Dual-Agent 2.0 — 全新升级自由模式
+# Dual-Agent 2.1 — 双订阅异构双网协作编排
 
-> **全新升级自由模式（2.0 版本）**：打破固定主从与写死模型的束缚——**在哪用谁就是主控**（支持 `Codex`、`Antigravity IDE`、`AGY CLI` 任意主控），同一会话首次触发时通过 **3 步实时模型弹窗**自由选定主从拍档，开启**全新独立子会话**（`agy` 个人 Pro 或 `agy-gcp` GCP ADC）完成阅读、编码与自测闭环，将架构决策与数百步编码上下文彻底物理隔离。
+> **核心理念（「幻觉错位 / 两张有破洞的网叠加」理论）**：不同 Harness（Agent 运行框架）与各家模型家族的思维盲区、疏漏点天然不一致。**日常默认主推 `Codex + agy` 双订阅模式**——主 Harness 负责需求规划、边界把控与 `git diff` 终验，独立子 Harness 负责**可行性验证提意见**与**任务执行自检闭环**，两张网错位叠加、互相兜底。**`agy-gcp` 降级为 Codex 不可用时的 Gemini 4 旗舰备选方案**，在 Codex / Codex CLI 中**绝不主动推送 `agy-gcp`**，仅在 `agy-gcp` 环境中使用本 Skill（或用户显式点名）时才主动推送。
 
 ## 核心亮点
 
-- **主控宿主自绑定（免选主控）**：在 `Codex`、`Antigravity IDE` 或终端 `agy` / `agy-gcp` 中发起对话，当前窗口自动锁定为主控（`Codex` 与 `Antigravity IDE` 仅作主控、不做被调子 Agent）。
-- **会话首次 3 步实时选型（后续自动复用）**：
-  1. **Step 1 选主控模型**：实时拉取当前主控真实可用模型列表并给出 `(Recommended)` 建议；
-  2. **Step 2 选子 Agent 通道**：在无头 CLI `agy`（个人 Google Pro）与 `agy-gcp`（GCP Vertex AI ADC）间自由二选一；
-  3. **Step 3 选子 Agent 模型**：实时执行子通道 `models` 查询，结合主控模型推荐最佳编码拍档，点选后**立即开跑**，同一会话后续任务自动沿用。
-- **同体系异构模型独立双会话**：支持在 Antigravity IDE 或 `agy` CLI 中用旗舰（`Carbon Medium` / `Argon Medium`）当大脑看需求与审 `git diff`，同时拉起全新独立子会话用 1M 主力（`gemini-4-hydrogen-high` / `gemini-3.8-flash-high`）干重活，既享受旗舰智商又绝不烧穿周配额。
+- **日常主推 `Codex + agy` 双订阅，防越界推送 `agy-gcp`**：
+  - 在 **Codex / Codex CLI**（及个人 `agy` / 个人 Antigravity IDE）中使用时，Skill **绝不主动推送 `agy-gcp`**，直接锁定 `agy` 个人 Pro 作为子通道，走双订阅固定成本 + 跨厂商模型异构互补。
+  - 仅当 **Codex 不可用** 或当前直接在 **`agy-gcp` 环境（`AGY_ADC_AUTH=true`）** 中触发 Skill 时，才主动推送 `agy-gcp` 调用 **Gemini 4 旗舰（`Carbon` / `Argon`）** 作为备选方案。
+- **主从 Harness 职责互补（规划审核 vs 可行性提意见 + 执行）**：
+  - **主 Harness**（主推 Codex `gpt-6.1-sol` 等）：负责规划拆解、定目标/不可变边界/验收条件、审查 `git diff` 与终验，绝不亲自下场重写业务代码。
+  - **子 Harness**（主推 `agy` `gemini-4-hydrogen-high` 等）：动手前先对照真实代码做**可行性验证并提出意见**（发现根本冲突立即停手提建议交主控拍板），可行则自主完成编码与编译自检闭环，并单列「可行性核验与补充意见」反馈。
+- **宿主自绑定 + 2 步实时选型（同会话自动复用）**：
+  1. **Step 1 实时查选主控模型**：Codex 实时读取 `~/.codex/config.toml` 与 `~/.codex/models_cache.json`，Antigravity IDE / `agy` / `agy-gcp` CLI 调内置 `swarm(action="models", all=true)`；
+  2. **Step 2 自动锁定子通道并实时查选子模型 $\rightarrow$ 立即开跑**：Codex / 个人环境直接锁定 `agy` 查 `agy models`（不推 `agy-gcp`）；仅 `agy-gcp` 宿主才查 `agy-gcp models`。选定后同会话后续任务与返工自动沿用。
 - **双宿主零轮询等待**：Codex 下基于 V8 `while` 循环 + `functions.wait` 持续等待，Antigravity IDE / CLI 下基于后台任务反应式自动唤醒，全程零轮询 Token 浪费。
 
 ---
@@ -24,42 +27,41 @@ mkdir -p ~/.codex/skills/dual-agent ~/.gemini/config/skills/dual-agent
 cp dual-agent/SKILL.md ~/.codex/skills/dual-agent/SKILL.md
 cp dual-agent/SKILL.md ~/.gemini/config/skills/dual-agent/SKILL.md
 
-# 2. （可选推荐）安装 GCP ADC 独立包装脚本与实时彩色看板脚本至 PATH
+# 2. （可选推荐）安装备选通道 agy-gcp 包装脚本与实时彩色看板脚本至 PATH
 mkdir -p ~/.local/bin
 cp bin/agy-gcp ~/.local/bin/agy-gcp
 cp bin/agy-watch ~/.local/bin/agy-watch
 ```
 
-安装后，在 **Codex** 或 **Antigravity IDE / CLI** 对话中调用 `$dual-agent`（或说明使用 `dual-agent` 自由模式）即可弹出选型向导开始协作：
-- [dual-agent/SKILL.md](dual-agent/SKILL.md)：3 步实时选型向导、双通道环境防串号与双宿主子会话调度模板。
-- [bin/agy-gcp](bin/agy-gcp)：GCP Vertex AI ADC 独立可执行包装器（自动解析 `~/.gemini/credentials/gcp-adc.json` 或标准 gcloud ADC 凭证与项目 ID）。
+安装后，在 **Codex**（主推）或 **Antigravity IDE / `agy` / `agy-gcp` CLI** 对话中调用 `$dual-agent` 即可弹出 2 步选型向导开始协作：
+- [dual-agent/SKILL.md](dual-agent/SKILL.md)：两张网理论分工、宿主隔离 2 步选型向导、可行性验证提示词与双宿主调度模板。
+- [bin/agy-gcp](bin/agy-gcp)：备选通道 GCP Vertex AI ADC 独立可执行包装器（自动解析 `~/.gemini/credentials/gcp-adc.json` 或标准 gcloud ADC 凭证与项目 ID）。
 - [bin/agy-watch](bin/agy-watch)：支持跨会话自动热切换的终端实时彩色执行大盘。
 - [CHANGELOG.md](CHANGELOG.md)：问题排查取证与版本演进记录。
 
 ---
 
-## 推荐自由组合速览
+## 推荐搭配与备选降级速览
 
-| 所在宿主（自动锁定为主控） | 主控推荐模型（定边界 / 审 `git diff`） | 独立子会话通道 & 推荐模型（读码 / 编码 / 自测） | 场景优势 |
-| :--- | :--- | :--- | :--- |
-| **Codex**（只做主控） | 当前窗口模型（如 `gpt-6.1-sol`） | `agy` + `gemini-4-hydrogen-high` | 零主控切换开销，用个人 Pro 充裕的 1M Hydrogen 主力包揽重度读写与单测 |
-| **Antigravity IDE**（只做主控） | `Gemini 4 Carbon (Medium)` 或 `Argon (Medium)` | `agy` + `gemini-4-hydrogen-high` | IDE 可视化审阅 + 旗舰大脑把关，数百步编码隔离在独立 CLI 子会话，不污染 IDE 主会话上下文 |
-| **终端 `agy` CLI** | `gemini-4-argon-medium` 或 `hydrogen-high` | `agy` + `gemini-4-hydrogen-high` | 纯个人 Pro 异构双会话：旗舰仅看几千 Token 边界与 `git diff`，彻底告别旗舰周配额击穿 |
-| **Antigravity IDE / `agy-gcp`** | `gemini-4-carbon-medium` | `agy-gcp` + `gemini-3.8-flash-high`（CLI 更新白名单后可切 `hydrogen-high`） | 全程运行在企业 GCP Vertex AI 合规边界内，主从独立双会话隔离 |
+| 定位 | 所在宿主（自动锁定为主控） | 主 Harness 推荐模型（规划 / 边界 / 审 `git diff`） | 独立子 Harness & 推荐模型（可行性验证提意见 + 执行闭环） | 核心优势 |
+| :--- | :--- | :--- | :--- | :--- |
+| **日常主推（默认）** | **Codex / Codex CLI**（绝不推送 `agy-gcp`） | 当前窗口旗舰（如 `gpt-6.1-sol`） | **`agy`** + `gemini-4-hydrogen-high`（复杂逻辑可用 `xhigh`） | OpenAI + Google 双订阅异构互补，1M 上下文主力干重活且零按量账单 |
+| **同体系隔离** | **Antigravity IDE / 个人 `agy` CLI** | `Gemini 4 Argon (Medium)` 或 `Hydrogen (High)` | **`agy`** + `gemini-4-hydrogen-high`（或跨厂商 `claude-sonnet-5-5-high`） | 旗舰大脑把关、数百步编码隔离在独立 CLI 子会话，不污染主会话且防烧穿周配额 |
+| **备选降级（仅 Codex 不可用或处于 `agy-gcp` 时推送）** | **`agy-gcp` CLI**（`AGY_ADC_AUTH=true`） | `gemini-4-carbon-medium` 或 `gemini-4-argon-medium` | **`agy-gcp`** + `gemini-4-hydrogen-high`（或跨厂商 `claude-sonnet-5-5-high`、`gemini-3.8-flash-high`） | Codex 无法使用时的 Gemini 4 旗舰顶替退路，实测 `agy 1.5.9` 已全量直通 Carbon / Hydrogen |
 
 ---
 
-## 架构与执行流程（2.0 自由模式）
+## 架构与执行流程（两张有破洞的网叠加）
 
-![Dual-Agent 2.0 自由模式架构及执行流程](assets/architecture.png)
+![Dual-Agent 2.1 双订阅异构双网协作架构与执行流程](assets/architecture.png)
 
 [查看完整尺寸 PNG](assets/architecture.png)
 
 ### 协作四原则
 
-1. **委托前**：检查脏工作区快照备份，主控讲清楚**业务目标、必要设计、不可变边界和验收条件**，不对子 Agent 做过度限制或手把手指导。复杂方案可按需派发单轮只读评估。
-2. **执行中**：直派全新独立子会话（**禁设短 `--print-timeout`**），由子会话自主完成阅读、编码、运行测试与局部纠错；主控零轮询静默等待完成唤醒。
-3. **交付后**：主控核对返回 JSON（`conversation_id`、`status`、`denied_actions`），集中审查 `git diff` 并执行独立验证，把遗漏问题一次性交回同一子会话修复。
+1. **委托前（主 Harness 规划）**：检查脏工作区快照备份，主控讲清楚**业务目标、必要设计、不可变边界和验收条件**，不对子 Harness 做过度限制或微观指导。重大跨服务改造可先派独立只读前置评估。
+2. **执行中（子 Harness 核验提意见 + 执行）**：直派全新独立子会话（**禁设短 `--print-timeout`**，默认禁写单测与禁加测试 POM 依赖）。子会话先核验方案可行性（遇根本冲突先停手提意见，可行则直接修改并编译自检），主控零轮询静默等待唤醒。
+3. **交付后（主 Harness 审 diff 终验）**：主控核对返回 JSON（`conversation_id`、`status`、`denied_actions`），先审子 Harness 的「可行性核验与补充意见」，再集中审查 `git diff` 并独立验证；发现遗漏一次性交回同一子会话修复。
 4. **出现阻塞时**：针对具体阻塞定向处理，主控绝不亲自下场重写业务代码。
 
 ---
