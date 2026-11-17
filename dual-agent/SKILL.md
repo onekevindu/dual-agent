@@ -1,44 +1,46 @@
 ---
 name: dual-agent
-description: 主从双 Harness 异构协作编排 Skill（基于「幻觉错位 / 两张有破洞的网叠加」原理）。日常默认主推 Codex + agy 双订阅模式：在 Codex / Codex CLI 或个人环境中绝不主动推送 agy-gcp，首次触发精简为 2 步实时选型（选主控模型 → 锁定 agy 并选子模型）；agy-gcp 降级为 Codex 不可用时的 Gemini 4 旗舰备选方案，仅当在 agy-gcp 环境使用本 Skill（或用户显式点名）时才主动推送。主 Harness 负责规划、定边界、审 git diff 与终验；独立子 Harness 负责可行性验证与意见提出、任务执行与本地编译自检闭环。
+description: 主从双 Harness 异构协作编排 Skill（基于「幻觉错位 / 两张有破洞的网叠加」原理）。日常默认主推 Codex + agy 双订阅模式（agy 默认模型锁定 gemini-4-hydrogen-xhigh；Codex 与个人环境中绝不主动推送 agy-gcp，仅在 agy-gcp 环境或用户显式点名时推送）。提供两种独立场景模式：(1) 默认「需求全流程开发模式」：首次触发走 2 步实时选型，随后按「主 Harness 规划 → agy 确认 → 主审核 → 人确认（按需） → agy 执行 → 主终验」动态协作推进，正常开发不插入讨论阶段；(2) 「纯需求沟通讨论模式」（仅用户显式让两个 Agent 沟通讨论需求时启用）：免选模型直通（当前终端模型 + agy 默认 gemini-4-hydrogen-xhigh），Skill 仅约束只读安全边界与 agy 启动方式，讨论流程完全交给主控自主规划。
 ---
 
-# Dual-Agent 2.1：双订阅异构双网协作编排
+# Dual-Agent 2.2：双订阅异构双网协作编排
 
-## 一、 核心理念：幻觉错位与「两张有破洞的网叠加」
+## 一、 核心理念与双模式分流
 
-### 1. 为什么需要两家工具叠加协作
-- **「幻觉错位」与「两张有破洞的网叠加」理论**：任何单一模型与单一 Harness（运行框架与工具链）都有固有的盲区、思维惯性与疏漏点，就像一张有破洞的网。不同 Harness（如 OpenAI Codex vs Antigravity CLI）与不同厂商模型家族（如 `gpt-6.1-*` vs `Gemini 4` / `Claude 5.5`）的疏漏点**天然错位、互不重合**。让两套不同体系叠加协作，可使漏洞相互遮盖，大幅压低单模型幻觉穿透与漏检风险。
-- **主从职责清晰互补**：
-  - **主 Harness（规划与终验）**：负责需求拆解、架构决策、明确目标与不可变边界、集中审查 `git diff` 及最终验收；
-  - **子 Harness（可行性验证提意见 + 任务执行）**：在独立新会话中对照真实代码库验证主控方案可行性、提出异议或修正建议，并自主完成代码实现与本地编译自检闭环。
+### 1. 幻觉错位与「两张有破洞的网叠加」理论
+- 任何单一模型与单一 Harness（运行框架与工具链）都有固有的盲区、思维惯性与疏漏点，如同各自带有破洞的网。
+- 不同 Harness（如 OpenAI Codex vs Antigravity CLI）与不同厂商模型家族（如 `gpt-6.1-*` vs `Gemini 4` / `Claude 5.5`）的疏漏点**天然错位、互不重合**。让两套不同体系叠加协作，可相互遮盖盲区，显著压低单模型幻觉穿透与漏检风险。
 
 ### 2. 日常主推方案与 `agy-gcp` 备选隔离规则
 - **日常默认主推：`Codex + agy` 双订阅模式**
-  - **主 Harness**：**Codex（桌面端 / Codex CLI）**（如 `gpt-6.1-sol` 等），专注架构把关与终验；
-  - **子 Harness**：**`agy`（个人 Google Pro 无头 CLI）**（如 1M 上下文/输出主力 `gemini-4-hydrogen-high`），承担可行性核验、意见反馈与重度编码闭环。既满足跨 Harness/跨厂商互补，又全程走固定双订阅额度，零额外按量账单。
+  - **主 Harness**：**Codex（桌面端 / Codex CLI）**（如 `gpt-6.1-sol` 等），负责规划拆解、审核与终验；
+  - **子 Harness**：**`agy`（个人 Google Pro 无头 CLI）**，默认主力模型统一锁定为 **`gemini-4-hydrogen-xhigh`**（1M 上下文/输出，深度思考档），兼顾跨 Harness/跨厂商互补与固定双订阅成本优势。
 - **`agy-gcp` 降级定位（仅作备选）**：
-  - **`agy-gcp`（GCP Vertex AI ADC）** 降级为 **Codex 不可用时的备选方案**——当 Codex 不可用（额度耗尽、网络/账号受限）或处于 GCP 合规环境时，通过 `agy-gcp` 调用 **Gemini 4 旗舰（如 `gemini-4-carbon-medium` / `gemini-4-argon-medium`）** 顶替原 Codex 主控位置，配合独立子会话延续双网隔离。
+  - **`agy-gcp`（GCP Vertex AI ADC）** 降级为 **Codex 不可用时的备选方案**——当 Codex 不可用或处于 GCP 合规环境时，通过 `agy-gcp` 调用 **Gemini 4 旗舰（如 `gemini-4-carbon-medium` / `gemini-4-argon-medium`）** 顶替原 Codex 主控大脑，配合独立子会话延续双网隔离。
 - **严格按宿主隔离推送（严禁越界推销 `agy-gcp`）**：
-  - **在 Codex / Codex CLI（及个人 `agy` CLI / 个人登录态 Antigravity IDE）中使用本 Skill 时**：**绝不主动推送 `agy-gcp`**（不列进默认选型弹窗），直接绑定 `agy` 作为子通道（仅用户主动在对话中明确点名要求 `agy-gcp` 时才切换）。
+  - **在 Codex / Codex CLI（及个人 `agy` CLI / 个人登录态 Antigravity IDE）中使用本 Skill 时**：**绝不主动推送 `agy-gcp`**（不列进默认弹窗），直接绑定 `agy`（仅用户主动点名要求 `agy-gcp` 时才切换）。
   - **只有在 `agy-gcp` 环境中使用本 Skill 时**（检测到环境变量 `AGY_ADC_AUTH=true` 等 GCP ADC 激活态）：才主动推送 `agy-gcp` 通道及其旗舰/主力模型组合。
 - **主控自绑定 & 单向角色边界**：
-  - 在哪个宿主窗口调用，当前宿主即为主控；**`Codex` 与 `Antigravity IDE` 只做主控、绝不做子 Agent**（不从外部反向调用 Codex CLI 或 IDE）。
-  - **子 Harness 始终以全新独立 CLI 会话运行**（传 `--project` 而非当前会话 ID），把数百步读码、改码与报错修复隔离在子会话上下文内。
+  - 在哪个宿主窗口调用，当前宿主即为主控；**`Codex` 与 `Antigravity IDE` 只做主控、绝不做子 Agent**。子 Harness 始终以**全新独立 CLI 会话**运行（传 `--project` 而非当前会话 ID）。
+
+### 3. 两种独立使用模式（严禁混为一谈）
+
+| 模式 | 触发场景 | 是否弹窗选模型 | Skill 约束重点 |
+| :--- | :--- | :--- | :--- |
+| **默认模式：需求全流程开发模式** | **正常开发默认走此模式**（实现需求、改代码、修 Bug、重构等；**绝不出现独立的“讨论需求阶段”**） | **首次触发走 2 步弹窗**（同会话后续自动沿用） | 2 步选型 + **「主 Harness 规划 $\rightarrow$ `agy` 确认 $\rightarrow$ 主审核 $\rightarrow$ 人确认（按需） $\rightarrow$ `agy` 执行 $\rightarrow$ 主终验」**动态闭环 |
+| **专项模式：纯需求沟通讨论模式** | **仅当用户显式要求让两个 Agent 沟通讨论需求 / 评审想法 / 技术推演**（不写代码）时触发 | **免选模型直通（绝不弹窗）**：当前终端模型 + `agy` 默认 `gemini-4-hydrogen-xhigh` | **仅约束 `agy` 启动方式与只读护栏**，讨论流程完全交给主控（如 Codex）自主规划并给出可靠结论 |
 
 ---
 
-## 二、 同一会话首次触发：宿主自适应「2 步实时选型向导」
+## 二、 默认模式（需求全流程开发）：2 步选型与动态开发闭环
 
-- **首次触发强制手动确认**：同一会话**第一次**调用 `$dual-agent` 时，**严禁跳过选型弹窗直接全量读码或修改业务代码**。必须使用宿主原生单选弹窗（Codex 使用 `functions.request_user_input_async` / `request_user_input`，Antigravity IDE / CLI 使用 `ask_question`）按 **Step 1 $\rightarrow$ Step 2** 串行弹出，每步给出 `(Recommended)` 建议，由用户点选确认后立即启动。
-- **显式直达与会话级复用**：
-  - 若用户在首条消息中已明确指定某一步的模型（或显式点名使用 `agy-gcp`），跳过已明确步骤、仅弹剩余未确认步骤；
-  - 首次选定后持久记住 `{ masterHarness, masterModel, workerChannel, workerModel }`，**本会话后续所有新任务与返工续接自动沿用，不再重复弹窗**（除非用户主动要求“重新选模型 / 切换子 Agent”）。
+### 1. 同一会话首次触发：宿主自适应「2 步实时选型向导」
 
-### Step 1：实时查询主控可用模型 $\rightarrow$ 弹出【选择主控模型】
-**严禁凭静态记忆硬编模型列表**，先实时获取当前主控宿主的真实可用模型：
+- **首次触发强制手动确认**：进入需求开发（写代码）阶段且本会话尚未完成过 2 步选型时，**严禁跳过弹窗直接全量读码或改业务代码**（注：即便此前同会话曾跑过“纯需求讨论模式”，进入实际写代码阶段仍须走一次 2 步选型确认）。使用原生单选弹窗（Codex 用 `functions.request_user_input_async` / `request_user_input`，Antigravity IDE / CLI 用 `ask_question`）按 **Step 1 $\rightarrow$ Step 2** 串行弹出。
+- **显式直达与会话级复用**：若用户首条指令已明确模型或显式点名 `agy-gcp`，跳过已明确步骤；首次选定后持久记住 `{ masterHarness, masterModel, workerChannel, workerModel }`，**本会话后续开发与返工自动沿用，不再重复弹窗**。
 
-- **当主控为 Codex 时**：运行以下轻量脚本实时读取当前激活模型与本地模型缓存：
+#### Step 1：实时查询主控可用模型 $\rightarrow$ 弹出【选择主控模型】
+- **当主控为 Codex 时**：运行以下脚本实时读取当前激活模型与本地模型缓存：
   ```bash
   python3 - <<'PY'
   import json, os, re
@@ -59,103 +61,130 @@ description: 主从双 Harness 异构协作编排 Skill（基于「幻觉错位 
               print(f"{x.get('slug') or x.get('id')}\t{x.get('display_name','')}\t[{effs}]")
   PY
   ```
-- **当主控为 Antigravity IDE 或 `agy` / `agy-gcp` CLI 时**：直接调用内置工具 `swarm(action="models", all=true)`，毫秒级拿到当前登录态的实时模型 ID 与显示名称。
+- **当主控为 Antigravity IDE 或 `agy` / `agy-gcp` CLI 时**：直接调用内置工具 `swarm(action="models", all=true)`。
+- 发起单选弹窗：首推 `(Recommended) 保持当前主控模型（<当前模型名>）`（或高复杂度规划推荐对应旗舰：`gpt-6.1-sol` / `agy-gcp` 下 `Gemini 4 Carbon (Medium)` / 个人 Pro `Gemini 4 Argon (Medium)`），并列实时候选；若选其他模型，在 Step 2 弹窗时顺带提示用户切顶栏 / `/model`。
 
-拿到实时列表后，发起 **Step 1 单选弹窗（选择主控模型）**：
-- 首项给出 `(Recommended)` 建议：若当前窗口已选模型适合当前任务，首推 `(Recommended) 保持当前主控模型（<当前模型名>）— 直接进入下一步`；高复杂度跨服务规划场景可推荐对应宿主的旗舰模型（Codex 推荐 `gpt-6.1-sol`；`agy-gcp` 备选环境推荐 `Gemini 4 Carbon (Medium)`；个人 Pro IDE / `agy` 推荐 `Gemini 4 Argon (Medium)` 或 `Gemini 4 Hydrogen (High/XHigh)`）。
-- 其余选项列出本次实时查出的核心候选模型（并在问题描述中附上完整实时列表供 `Other` 自由输入）。
-- **平滑切换说明**：若用户点选了其他主控模型，在发起 Step 2 弹窗时顺带提示一句：“请顺手在输入框旁模型选择器（或 `/model`）切换为 `<所选主控模型>`，下一轮起自动按该主控模型运行”，无需额外多停一轮。
+#### Step 2：按宿主自动锁定子通道 $\rightarrow$ 实时查选【子 Harness 模型】 $\rightarrow$ 立即启动
+- **子通道自动判定（绝不主动推送 `agy-gcp`）**：
+  - **Codex / Codex CLI / 个人 `agy` CLI / 个人 Antigravity IDE**：自动锁定 `workerChannel = "agy"`（仅用户明确点名 `agy-gcp` 时才切）。
+  - **仅当宿主自身处于 `agy-gcp` 环境时**（如 `AGY_ADC_AUTH=true`）：自动锁定 `workerChannel = "agy-gcp"`，主动推送 `agy-gcp` 模型列表。
+- **实时查询所锁定子通道可用模型**：
+  ```bash
+  # 默认个人通道 agy：
+  env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT agy models 2>/dev/null | tr '\r' '\n' | grep -E '^[a-z0-9][a-z0-9._-]+[[:space:]]+'
 
-### Step 2：按宿主自动锁定子通道 $\rightarrow$ 实时查选【子 Harness 模型】 $\rightarrow$ 立即执行
-
-**子通道自动判定规则（不再多弹一步通道选择，绝不主动推销 `agy-gcp`）**：
-- **在 Codex / Codex CLI、Antigravity IDE（个人态）或个人 `agy` CLI 中**：自动锁定 `workerChannel = "agy"`（**绝不主动推送 `agy-gcp`**；仅当用户已在指令中显式点名 `agy-gcp` 时才改为 `"agy-gcp"`）。
-- **仅当当前宿主处于 `agy-gcp` 环境时**（如环境变量 `AGY_ADC_AUTH=true` 已激活）：自动锁定 `workerChannel = "agy-gcp"`，主动推送 `agy-gcp` 模型列表。
-
-按锁定的 `workerChannel` **实时查询**子通道可用模型清单：
-
-```bash
-# 1) 默认个人通道 agy（Codex / 个人环境默认锁定此分支）：
-env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT agy models 2>/dev/null | tr '\r' '\n' | grep -E '^[a-z0-9][a-z0-9._-]+[[:space:]]+'
-
-# 2) 仅当宿主为 agy-gcp（AGY_ADC_AUTH=true）或用户显式点名 agy-gcp 时执行：
-if command -v agy-gcp >/dev/null 2>&1; then agy-gcp models; elif [ -x "$HOME/.local/bin/agy-gcp" ]; then "$HOME/.local/bin/agy-gcp" models; else SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp models'; fi 2>/dev/null | tr '\r' '\n' | grep -E '^[a-z0-9][a-z0-9._-]+[[:space:]]+'
-```
-
-结合 Step 1 主控模型，发起 **Step 2 单选弹窗（选择子 Harness 模型）**：
-- **当 `workerChannel === "agy"` 时**：
-  - 首推 `(Recommended) gemini-4-hydrogen-high — 1M 上下文/输出主力 workhorse，与 Codex 形成跨 Harness 异构双网互补，双订阅额度充裕`；
-  - 同列实时存在的 `gemini-4-hydrogen-xhigh`（超复杂逻辑与深度可行性校验）、`gemini-3.8-flash-high`（高额度保底）、`claude-sonnet-5-5-high`（若主控同为 Gemini 体系，推荐选跨厂商 Claude 以实现模型家族错位互补）、`gemini-4-argon-medium` 等。
-- **当 `workerChannel === "agy-gcp"` 时（仅 `agy-gcp` 宿主或用户显式要求触发）**：
-  - 若实时列表已含 `gemini-4-hydrogen-high`（实测 `agy 1.5.9` 已支持）则首推之，否则首推 `(Recommended) gemini-3.8-flash-high`；
-  - 若当前 `agy-gcp` 主控已选 `Gemini 4 Carbon (Medium)`，同步标注 `claude-sonnet-5-5-high` 可实现跨厂商模型家族互补（“两张网错位”），同列实时存在的 `gemini-4-hydrogen-xhigh`、`gemini-4-carbon-low`、`gemini-4-argon-medium` 等。
-- **选完立即启动**：Step 2 返回后**不再追问“是否开始”**，直接打印一行锁定配置摘要：
-  `已锁定本会话协同配置：主 Harness = <当前宿主> (<masterModel>) | 子 Harness = <workerChannel> (<workerModel>，独立新会话)`，随即开始执行任务！
+  # 仅当宿主为 agy-gcp（AGY_ADC_AUTH=true）或用户显式点名 agy-gcp 时执行：
+  if command -v agy-gcp >/dev/null 2>&1; then agy-gcp models; elif [ -x "$HOME/.local/bin/agy-gcp" ]; then "$HOME/.local/bin/agy-gcp" models; else SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp models'; fi 2>/dev/null | tr '\r' '\n' | grep -E '^[a-z0-9][a-z0-9._-]+[[:space:]]+'
+  ```
+- 发起 Step 2 单选弹窗：
+  - **首推 `(Recommended) gemini-4-hydrogen-xhigh`**：作为 `agy`（及 `agy-gcp` 实测 `agy 1.5.9` 已支持）默认主力模型，1M 上下文/输出 + `xhigh` 深度推理，兼顾方案核验深度与强编码闭环；
+  - 同列实时存在的 `gemini-4-hydrogen-high`（高速降级备选）、`gemini-3.8-flash-high`（高额度保底）、`claude-sonnet-5-5-high`（当主控同为 Gemini 时可选跨厂商互补）、`gemini-4-argon-medium` 等。
+- **选完立即启动**：不再追问“是否开始”，打印一行配置摘要并立即启动开发流程：
+  `已锁定本会话协同配置：主 Harness = <当前宿主> (<masterModel>) | 子 Harness = <workerChannel> (<workerModel>，独立新会话)`
 
 ---
 
-## 三、 核心协作原则与安全/配额护栏
+### 2. 动态开发协作流程：「主 Harness 规划 $\rightarrow$ `agy` 确认 $\rightarrow$ 主审核 $\rightarrow$ 人确认 $\rightarrow$ `agy` 执行」
 
-1. **「两张网」职责分离与双会话物理隔离**：
-   - **主控定目标与边界，不做微观管理**：主 Harness 只负责明确**业务目标、必要设计、不可变边界和验收条件**，不替子 Harness 全量预读源码，不在提示词里教子 Harness 怎么调工具。
-   - **子 Harness 承担「可行性验证提意见 + 任务执行」**：
-     - **先核验再实施**：子会话动手改码前先对照真实代码核验主控方案。若发现**核心假设错误、接口/契约冲突或重大设计隐患**导致方案不可行，必须先停手输出可行性异议与修正建议，交主控拍板；若方案可行但存在局部边界风险或优化空间，正常执行并在交付摘要中单列**「可行性核验与补充意见」**。
-     - **强制独立新会话**：无论主控在 Codex、IDE 还是 CLI，子会话均**必须开启全新独立会话**（传 `--project` 而非主控会话 ID），把数百步源码阅读、修改与编译报错修复彻底隔离在子会话上下文内。
-   - **默认禁写测试代码与禁改测试 POM 依赖**：除非用户明确要求编写单元测试，否则主从均严禁新建 `src/test/**` 测试类或在 `pom.xml` 中擅自新增 `test` 依赖；验收以 `mvn compile` 编译校验、SQL/表结构对齐检查或运行态验证为主。
-   - **生产代码始终由子会话修改**：主控集中审查 `git diff` 与独立验证，发现问题一次性汇总交回同一子会话修复，主控绝不亲自下场重写业务代码（仅纯文档拼写或单行常量微调除外）。
-2. **双通道环境防串号与非交互 Shell 铁律**：
-   - **个人通道 `agy`（默认）**：必须通过 `env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT agy ...` 剥离父进程残留的 GCP 变量，防止误走 GCP 计费。
-   - **GCP 通道 `agy-gcp`（备选/GCP 宿主）**：优先直调可执行 `agy-gcp`（`command -v agy-gcp` 或 `$HOME/.local/bin/agy-gcp`），否则回退 `SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp "$@"' zsh <参数...>`（位置参数 `"$@"` 透传防止多行提示词与 JSON 被二次转义破坏，并屏蔽 `Saving session...` 污染输出）。
-   - **每次 CLI 调用必传 `--model '<精确模型ID>'`**，覆盖共享 `~/.gemini/antigravity-cli/settings.json` 缓存。
-3. **锁死亲选模型 & 配额耗尽无缝兜底**：
-   - 执行与返工续接期间，**严格锁定用户在 Step 2 亲手选定的 `workerModel`，严禁主控私自升配其他模型**。
-   - 仅当所选子模型遇到配额耗尽（Quota exhausted / 429）或端点持续不可用报错时，按同通道降级链无缝兜底并在交付报告中如实说明（`agy`：所选模型 $\rightarrow$ `gemini-4-hydrogen-high` $\rightarrow$ `gemini-3.8-flash-high`；`agy-gcp`：所选模型 $\rightarrow$ `gemini-4-hydrogen-high` $\rightarrow$ `gemini-3.8-flash-high`）。
-4. **脏工作区快照保护与禁短超时**：
-   - **基线快照保护**：若委托前工作区存在未提交改动，先做好快照备份；子会话调用一律通过 `--settings` 物理拦截 `git reset / checkout / restore / clean`。
-   - **严禁附加短 `--print-timeout`（如 `40s`/`90s`）**：保持原生默认 `0s`，避免冷启动（`8s~22s`）及旗舰流式首包排队/网络重试（`75s~160s`）被提前截断。
+正常需求开发直接进入以下动态协作闭环，**不额外插入独立的“需求讨论阶段”**：
+
+1. **主 Harness 规划**：检查工作区未提交改动快照，主控拆解需求并制定技术方案，明确**业务目标、必要设计、不可变边界与验收条件**（不替子 Harness 全量预读源码，不在提示词里教怎么调工具）。
+2. **`agy` 确认（可行性核验与意见提出）**：
+   - **前置只读确认路径**（涉及多模块联动、跨服务契约、状态机/库表变更或存在不确定边界时优先采用）：使用只读沙箱配置（`READONLY_SETTINGS`）拉起独立子会话，让 `agy` 对照真实代码核验主控规划的可行性，暴露潜在冲突、隐含假设与修正建议。
+   - **内嵌核验合并路径**（契约清晰、风险可控的常规任务）：直接派发执行 Prompt，并在 Prompt 中要求**动手改码前先核验方案可行性**——无根本冲突则直接执行并在摘要单列「可行性核验与补充意见」，若发现重大冲突则停手先回报异议，动态转入下一步主审核。
+3. **主 Harness 审核**：主控审核 `agy` 返回的可行性确认结果与异议意见，综合两张网交叉校验修订最终技术方案。
+4. **人确认（按需动态触发）**：当审核后发现**业务语义/产品取舍待决、重大架构/边界变更、高风险不可逆操作或 `agy` 提出重大可行性异议**时，主控汇总方案与意见交用户拍板确认；若双方核验完全对齐、边界无歧义且在既定授权范围内，直接推进执行，不对用户做多余二次打扰。
+5. **`agy` 执行**：沿用原确认子会话（`--conversation '<conversation_id>'`）或新开独立子会话（`--project`）完成源码修改与本地编译自检（默认严禁新增 `src/test/**` 或在 `pom.xml` 中新增 `test` 依赖）。
+6. **主 Harness 审查 `git diff` 与终验**：核对 `--output-format json` 返回的 `conversation_id`、`status`、`stderr` 与 `denied_actions`，集中审查 `git diff` 并做独立编译/运行态验证；遇遗漏通过 `--conversation` 一次性交回同一子会话修复，主控绝不亲自下场重写业务代码（仅纯文档拼写或单行常量微调除外）。
 
 ---
 
-## 四、 双宿主自适应子会话调度模板
+## 三、 专项模式（纯需求沟通讨论）：免选模型直通与启动约束
 
-### 1. 当主控为 Codex 时：V8 循环 + `functions.wait` 零轮询派发子会话
+### 1. 适用边界与免选直通
+- **触发条件**：仅当用户明确要求两个 Agent **沟通讨论需求、评审方案思路、做技术选型推演或排查可行性**（不修改代码）时触发。正常开发全流程任务绝不误触发此模式。
+- **免选模型直通（严禁弹窗）**：
+  - **主 Harness**：直接使用**当前终端/宿主正在使用的模型**；
+  - **子 Harness**：在 Codex / 个人环境中**绝不主动推送 `agy-gcp`**，直接使用 `agy` 默认模型 **`gemini-4-hydrogen-xhigh`**（仅当当前宿主自身是 `agy-gcp` 时才用 `agy-gcp` 的 `gemini-4-hydrogen-xhigh`）。
+- **不绑定后续写代码选型**：讨论阶段结束后，若用户在同一会话后续要求“按方案开始写代码”，且本会话尚未走过第二节的 2 步选型弹窗，仍须走 2 步选型弹窗确认开发主从模型。
 
-在 Codex 的 `functions.exec` 工具中运行（日常默认锁定 `workerChannel = "agy"`，**绝不主动推送 `agy-gcp`**；5 分钟内完成则 0 次中途唤醒）：
+### 2. Skill 只约束启动与只读底线，不限制讨论流程
+**讨论需求的具体流程（沟通几轮、如何拆解议题、从什么角度追问反驳、如何收敛并向用户呈现可靠结论）完全交给主 Harness（如 Codex）自主规划**，Skill 不把讨论过程写死成固定步骤，仅约束以下 4 条启动与安全红线：
+1. **防串号与默认模型锁定**：`agy` 必须通过 `env -u ...` 剥离 GCP ADC 环境变量并显式传入 `--model 'gemini-4-hydrogen-xhigh'`（覆盖共享 `settings.json` 缓存；仅当遇 429/不可用时自动降级 `gemini-4-hydrogen-high` $\rightarrow$ `gemini-3.8-flash-high`）。
+2. **物理只读安全边界**：统一使用下方 `READONLY_SETTINGS`（不加 `--dangerously-skip-permissions`），物理禁止 `write_file(*)` / `edit_file(*)` / `mcp(*)` / `read_url(*)`，同时在沙箱内放行 `read_file` 与只读检索命令（`rg`、`grep`、`ls`、`cat`、`head`、`tail`、`wc`、`git status/diff/log/show`），保证子 Harness 能基于真实代码事实参与讨论。
+3. **零轮询等待机制与禁短超时**：Codex 下使用 V8 `while` + `functions.wait`，IDE / CLI 下使用 `run_command` 反应式唤醒；严禁附加短 `--print-timeout`（保持默认 `0s`）。
+4. **独立会话与多轮续聊**：首轮讨论传 `--project '<项目ID或名称>'` 开启独立子会话，保留返回的 `conversation_id`；主控需要进一步追问、辩论或对齐细节时，直接将 `--project` 替换为 `--conversation '<conversation_id>'` 续聊。
+
+---
+
+## 四、 安全/配额护栏与双宿主调度模板
+
+### 通用硬性护栏
+1. **默认禁写单测与禁改测试 POM 依赖**：除非用户明确要求编写单元测试，否则主从均严禁新增 `src/test/**` 或在 `pom.xml` 中擅自新增 `test` 依赖；验收以 `mvn compile` 编译校验、SQL/表结构对齐检查或运行态验证为主。
+2. **锁死模型 & 同通道降级兜底**：开发模式下严格锁定 Step 2 亲选的 `workerModel`，讨论模式下锁定 `gemini-4-hydrogen-xhigh`，**严禁主控私自升配其他高耗配额模型（如 `Argon` / `Carbon`）**。仅当遇配额耗尽（429）或端点持续不可用时按同通道降级链（`gemini-4-hydrogen-xhigh` $\rightarrow$ `gemini-4-hydrogen-high` $\rightarrow$ `gemini-3.8-flash-high`）兜底并告知用户。
+3. **双通道防串号 & 禁短超时**：`agy` 必用 `env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT`；`agy-gcp` 优先直调可执行 `agy-gcp`，否则回退 `SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp "$@"' zsh`；每次调用必传 `--model`；严禁附加短 `--print-timeout`。
+4. **基线快照保护**：开发执行前如有未提交改动须先做快照备份；执行配置通过 `--settings` 物理拦截 `git reset / checkout / restore / clean`。
+
+---
+
+### 1. 当主控为 Codex 时：V8 循环 + `functions.wait` 零轮询调度模板
+
+在 Codex 的 `functions.exec` 工具中运行（5 分钟内完成则 0 次中途唤醒）：
 
 ```javascript
 // @exec: {"yield_time_ms": 300000, "max_output_tokens": 10000}
-const workerChannel = "agy"; // Codex 默认锁定 "agy" 双订阅；仅用户显式点名备选时才改为 "agy-gcp"
-const workerModel = "<Step 2 用户选定的 workerModel>";
-const prompt = `目标：<要实现的业务目标与关键技术决策>
+const mode = "exec"; // "exec"（代码执行）| "readonly"（agy只读确认 / 纯需求讨论模式）
+const workerChannel = "agy"; // Codex 默认锁定 "agy" 双订阅，绝不主动推送 "agy-gcp"；仅用户显式点名时改 "agy-gcp"
+const workerModel = "gemini-4-hydrogen-xhigh"; // 开发模式填 Step 2 所选模型（默认推荐 gemini-4-hydrogen-xhigh）；讨论模式固定 gemini-4-hydrogen-xhigh
+
+const prompt = mode === "readonly"
+  ? `<由 Codex 自主规划的只读确认或需求讨论议题：明确背景、疑问、边界与期望反馈>`
+  : `目标：<要实现的业务目标与关键技术决策>
 不可变边界：<必须保留的既有行为、接口与协议；禁止执行 git checkout/restore/reset/clean 丢弃未提交改动；严禁未经用户明确要求新增 src/test/** 测试代码或在 pom.xml 中新增 test 依赖>
 验收条件：<mvn compile 编译检查或代码自检通过标准>
 执行与核验要求：
-1. 先对照真实源码核验上述方案的可行性：若发现核心假设错误、接口契约冲突或重大遗漏导致不宜直接改动，立即停手并输出可行性异议与修正建议；
-2. 若方案可行，自主完成代码修改与本地编译自检（默认禁写单测、禁加测试 pom 依赖），修复发现的问题后返回改动摘要，并单列「可行性核验与补充意见」（边界提醒、潜在风险或优化建议）。`;
-const settings = JSON.stringify({
+1. 动手改码前先对照真实源码核验方案可行性：若发现核心假设错误、接口契约冲突或重大遗漏导致不宜直接改动，立即停手并输出可行性异议与修正建议；
+2. 若方案可行，自主完成代码修改与本地编译自检（默认禁写单测、禁加测试 pom 依赖），修复发现的问题后返回改动摘要，并单列「可行性核验与补充意见」。`;
+
+const EXEC_SETTINGS = JSON.stringify({
   permissions: {
-    deny: [
-      "command(git reset)",
-      "command(git checkout)",
-      "command(git restore)",
-      "command(git clean)"
-    ]
+    deny: ["command(git reset)", "command(git checkout)", "command(git restore)", "command(git clean)"]
   }
 });
+const READONLY_SETTINGS = JSON.stringify({
+  allowNonWorkspaceAccess: false,
+  enableTerminalSandbox: true,
+  toolPermission: "request-review",
+  permissions: {
+    allow: [
+      "command(rg)", "command(grep)", "command(ls)", "command(cat)",
+      "command(head)", "command(tail)", "command(wc)",
+      "command(git status)", "command(git diff)", "command(git log)", "command(git show)"
+    ],
+    deny: ["write_file(*)", "edit_file(*)", "mcp(*)", "read_url(*)"]
+  }
+});
+
 const q = s => "'" + s.replaceAll("'", "'\\''") + "'";
 const runner = workerChannel === "agy-gcp"
   ? `if command -v agy-gcp >/dev/null 2>&1; then agy-gcp "$@"; elif [ -x "$HOME/.local/bin/agy-gcp" ]; then "$HOME/.local/bin/agy-gcp" "$@"; else SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp "$@"' zsh "$@"; fi`
   : `env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT agy "$@"`;
+
+const sessionTarget = ["--project", "<项目ID或名称>"]; // 续接确认/多轮讨论/返工时改为 ["--conversation", "<conversation_id>"]
+const modeFlags = mode === "readonly"
+  ? ["--sandbox", "--settings", READONLY_SETTINGS]
+  : ["--dangerously-skip-permissions", "--settings", EXEC_SETTINGS];
+
 const args = [
-  "--project", "<项目ID或名称>",
+  ...sessionTarget,
   "--model", workerModel,
   "--mode", "accept-edits",
   "--disable-slash-commands",
-  "--dangerously-skip-permissions",
-  "--settings", settings,
+  ...modeFlags,
   "--output-format", "json",
   "-p", prompt
 ].map(q).join(" ");
+
 let res = await tools.exec_command({
   cmd: `sh -c ${q(runner)} sh ${args}`,
   yield_time_ms: 30000,
@@ -178,57 +207,38 @@ text(out);
 
 ---
 
-### 2. 当主控为 Antigravity IDE / AGY CLI / `agy-gcp` 时：`run_command` 反应式唤醒派发子会话
+### 2. 当主控为 Antigravity IDE / AGY CLI / `agy-gcp` 时：`run_command` 反应式唤醒模板
 
-主控直接通过原生 `run_command` 工具（设置 `WaitMsBeforeAsync: 10000`，`IsDaemon: false`）启动**全新独立子会话**（严禁传入主控当前会话 ID）：
+主控通过原生 `run_command`（`WaitMsBeforeAsync: 10000`，`IsDaemon: false`）启动**全新独立子会话**（严禁传入主控当前会话 ID）：
 
 ```bash
-SETTINGS='{"permissions":{"deny":["command(git reset)","command(git checkout)","command(git restore)","command(git clean)"]}}'
-PROMPT='目标：<要实现的业务目标与关键技术决策>
-不可变边界：<必须保留的既有行为、接口与协议；禁止执行 git checkout/restore/reset/clean 丢弃未提交改动；严禁未经用户明确要求新增 src/test/** 测试代码或在 pom.xml 中新增 test 依赖>
-验收条件：<mvn compile 编译检查或代码自检通过标准>
-执行与核验要求：
-1. 先对照真实源码核验上述方案的可行性：若发现核心假设错误、接口契约冲突或重大遗漏导致不宜直接改动，立即停手并输出可行性异议与修正建议；
-2. 若方案可行，自主完成代码修改与本地编译自检（默认禁写单测、禁加测试 pom 依赖），修复发现的问题后返回改动摘要，并单列「可行性核验与补充意见」（边界提醒、潜在风险或优化建议）。'
+EXEC_SETTINGS='{"permissions":{"deny":["command(git reset)","command(git checkout)","command(git restore)","command(git clean)"]}}'
+READONLY_SETTINGS='{"allowNonWorkspaceAccess":false,"enableTerminalSandbox":true,"toolPermission":"request-review","permissions":{"allow":["command(rg)","command(grep)","command(ls)","command(cat)","command(head)","command(tail)","command(wc)","command(git status)","command(git diff)","command(git log)","command(git show)"],"deny":["write_file(*)","edit_file(*)","mcp(*)","read_url(*)"]}}'
 
-# 默认个人通道 agy（Antigravity IDE 个人态 / agy CLI 默认走此分支）：
+# [A] 默认个人通道 agy — 1) 只读确认 / 纯需求讨论模式（去掉 --dangerously-skip-permissions，默认模型 gemini-4-hydrogen-xhigh）：
+env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT \
+  agy --project '<项目ID或名称>' --model 'gemini-4-hydrogen-xhigh' \
+  --mode accept-edits --disable-slash-commands --sandbox \
+  --settings "$READONLY_SETTINGS" --output-format json -p '<由主控规划的确认/讨论提示词>'
+
+# [A] 默认个人通道 agy — 2) 代码执行模式（续接可改 --project 为 --conversation '<id>'）：
 env -u AGY_ADC_AUTH -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_CORE_PROJECT -u GOOGLE_CLOUD_PROJECT \
   agy --project '<项目ID或名称>' --model '<workerModel>' \
   --mode accept-edits --disable-slash-commands --dangerously-skip-permissions \
-  --settings "$SETTINGS" --output-format json -p "$PROMPT"
+  --settings "$EXEC_SETTINGS" --output-format json -p "$PROMPT"
 
-# 仅当当前宿主就是 agy-gcp（AGY_ADC_AUTH=true）或用户显式点名 agy-gcp 备选时使用：
+# [B] 备选通道 agy-gcp（仅当当前宿主就是 agy-gcp [AGY_ADC_AUTH=true] 或用户显式点名时按需运行）：
 if command -v agy-gcp >/dev/null 2>&1; then
-  agy-gcp --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$SETTINGS" --output-format json -p "$PROMPT"
+  agy-gcp --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$EXEC_SETTINGS" --output-format json -p "$PROMPT"
 elif [ -x "$HOME/.local/bin/agy-gcp" ]; then
-  "$HOME/.local/bin/agy-gcp" --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$SETTINGS" --output-format json -p "$PROMPT"
+  "$HOME/.local/bin/agy-gcp" --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$EXEC_SETTINGS" --output-format json -p "$PROMPT"
 else
-  SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp "$@"' zsh --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$SETTINGS" --output-format json -p "$PROMPT"
+  SHELL_SESSIONS_DISABLE=1 /bin/zsh -ic 'agy-gcp "$@"' zsh --project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --dangerously-skip-permissions --settings "$EXEC_SETTINGS" --output-format json -p "$PROMPT"
 fi
+# （注：在 agy-gcp 下跑只读确认/讨论时，同样将 --dangerously-skip-permissions --settings "$EXEC_SETTINGS" 替换为 --sandbox --settings "$READONLY_SETTINGS"）
 ```
 
-- **反应式零轮询等待铁律**：命令运行满 10 秒自动转为后台任务后，主控立即向用户简短同步一句“已派发独立子会话执行，等待完成唤醒”并**直接结束当前轮次（不调用更多工具）**；严禁使用 `sleep` 或循环调 `manage_task` 轮询，子会话结束时系统会自动唤醒主控并交付完整 JSON 输出。
-
----
-
-### 3. 集中终验、意见处理与续接返工
-
-1. 从 `--output-format json` 返回结果中提取并保存子会话 `conversation_id`，同时核查进程退出码、`status`、`stderr` 及 `denied_actions`（不能仅凭退出码 `0` 认定完成）。
-2. **先审「可行性异议 / 补充意见」再审 `git diff`**：
-   - 若子会话因发现根本性冲突而停手提出可行性异议，主控先基于真实反馈修订方案（必要时向用户确认决策），再将派发命令中的 `--project '<项目ID或名称>'` 替换为 `--conversation '<子会话 conversation_id>'` 下发修订方案继续执行；
-   - 若子会话已完成修改，主控审阅其「可行性核验与补充意见」，并集中审查 `git diff` 与执行独立编译/运行态验证；发现遗漏问题同样通过 `--conversation` 保持同一 `workerChannel` 与 `workerModel` 一次性汇总打回修复。
-3. 若多轮返工后子会话步数过多出现上下文衰减，开启全新独立子会话（传 `--project`）并精炼交接当前基线成果与剩余问题。
-
----
-
-### 4. 重大架构方案独立只读前置评估（按需触发）
-
-常规任务直接按上文单轮内嵌核验模式派发；仅当涉及跨服务契约重构、核心状态机改造或高风险数据库迁移时，主控可先向子 Harness 派发一轮**物理只读**可行性评估，拿回验证意见与边界清单后再拍板派发实施：
-
-```bash
-EVAL_SETTINGS='{"allowNonWorkspaceAccess":false,"enableTerminalSandbox":true,"toolPermission":"request-review","permissions":{"deny":["write_file(*)","command(*)","mcp(*)","read_url(*)"]}}'
-# 按已锁定 workerChannel 与模型传入：--project '<项目ID或名称>' --model '<workerModel>' --mode accept-edits --disable-slash-commands --sandbox --settings "$EVAL_SETTINGS" --output-format json -p '请对照现有代码做只读可行性验证：指出以下方案的潜在冲突、遗漏边界、隐含风险及修正建议：<方案摘要>'
-```
+- **反应式零轮询等待铁律**：命令运行满 10 秒自动转为后台任务后，主控立即向用户简短同步一句“已派发独立子会话执行，等待完成唤醒”并**直接结束当前轮次（不调用更多工具）**；严禁 `sleep` 或循环调 `manage_task` 轮询。
 
 ---
 

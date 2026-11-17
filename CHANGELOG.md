@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0] - 2026-11-17 — 新增「纯需求沟通讨论模式（免选模型直通）」、全模式默认升级 `gemini-4-hydrogen-xhigh` 与动态开发闭环
+
+1. **全模式 `agy` 默认主力模型升级为 `gemini-4-hydrogen-xhigh`**：
+   - 替换原 `gemini-4-hydrogen-high`，统一作为默认开发模式与纯需求沟通讨论模式的默认推荐/锁定模型；同步顺延同通道 429 降级链为 `gemini-4-hydrogen-xhigh` $\rightarrow$ `gemini-4-hydrogen-high` $\rightarrow$ `gemini-3.8-flash-high`。
+2. **明确两大独立场景模式（互不混杂，正常开发不插讨论阶段）**：
+   - **默认模式（需求全流程开发）**：正常使用 `$dual-agent` 默认走此模式，绝不额外出现“讨论需求阶段”。首次触发走 2 步选型弹窗，随后按**「主 Harness 规划 $\rightarrow$ `agy` 确认 $\rightarrow$ 主审核 $\rightarrow$ 人确认（按需） $\rightarrow$ `agy` 执行 $\rightarrow$ 主终验」**动态闭环推进。
+   - **专项模式（纯需求沟通讨论）**：仅当用户显式让两个 Agent 沟通讨论需求（不写代码）时触发。**免弹窗选模型**，直接使用**当前终端模型 + `agy` 默认 `gemini-4-hydrogen-xhigh`**；Skill 仅约束 `agy` 启动与物理只读底线，讨论流程完全交由主控自主规划并产出可靠结论。后续同会话若转入写代码开发，仍按规范走 2 步选型弹窗。
+3. **升级 `READONLY_SETTINGS` 只读检索权限**：
+   - 修复旧版 `EVAL_SETTINGS` 一刀切封禁 `command(*)` 导致 `agy 1.5.9` 无法运行 `rg`/`ls`/`git diff` 检索代码的问题：改用显式 `deny`（`write_file(*)`、`edit_file(*)`、`mcp(*)`、`read_url(*)`）叠加只读命令白名单（`rg`、`grep`、`ls`、`cat`、`head`、`tail`、`wc`、`git status/diff/log/show`）与 `--sandbox`。
+
+---
+
 ## [2.1.0] - 2026-11-17 — 确立「两张网叠加」异构双订阅主推架构、`agy-gcp` 降级备选隔离与可行性核验闭环
 
 1. **明确「幻觉错位 / 两张有破洞的网叠加」理论与双订阅主推定位**：
